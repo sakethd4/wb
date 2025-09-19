@@ -1,13 +1,36 @@
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_LSM9DS1.h>
+#include <Adafruit_HTS221.h>
+#include <SPI.h>
+#include <SD.h>
 #include <Adafruit_Sensor.h>
 
 #define LSM9DS1_XGCS 0x6A 
 #define LSM9DS1_MCS 0x1C
 
+const int chipSelect = 13;
 Adafruit_BMP280 bmp;
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1();
+Adafruit_HTS221 hts = Adafruit_HTS221();
+
+void initSDCard() {
+ 
+  pinMode(chipSelect, OUTPUT);
+  pinMode(2, OUTPUT);
+  digitalWrite(chipSelect, HIGH);
+ 
+  SPI.begin(18, 19, 23, chipSelect);
+
+
+  delay(50);
+ 
+  if (!SD.begin(chipSelect, SPI, 4000000)) {
+    Serial.println("SD card initialization failed!");
+    while (1) { delay(10); }
+  }
+  Serial.println("SD card initialized.");
+}
 
 void setup() {
   Serial.begin(9600);
@@ -16,7 +39,7 @@ void setup() {
   Serial.println(F("BMP280 and LSM9DS1 Test"));
 
   if (!bmp.begin()) {
-    Serial.println(F("Could not find BMP280 sensor! Check wiring!"));
+    Serial.println(F("Could not find BMP280 sensor!"));
     while (1) delay(10);
   }
   Serial.println(F("BMP280 sensor found!"));
@@ -31,11 +54,64 @@ void setup() {
     Serial.println(F("Could not find LSM9DS1 sensor!"));
     while (1) delay(10);
   }
+  Serial.println(F("LSM9DS1 sensor found!"));
+
+  if (!hts.begin_I2C()) {
+    Serial.println(F("Couldn't find HTS221 sensor!"));
+    while (1) delay(10);  
+  }
+  Serial.println(F("HTS221 sensor found!"));
+ 
+  initSDCard();
 
   // Set up the LSM9DS1 sensors
   lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);
+}
+
+void logDataToSD(float temperature, float humidity, float pressure, float altitude, 
+                 float xAccel, float yAccel, float zAccel, 
+                 float xGyro, float yGyro, float zGyro, 
+                 float xMag, float yMag, float zMag) {
+                  
+  File dataFile = SD.open("/sensor_data.txt", FILE_APPEND);
+ 
+  if (dataFile) {
+    dataFile.print("Temp: ");
+    dataFile.print(temperature);
+    dataFile.print(" C, Humidity: ");
+    dataFile.print(humidity);
+    dataFile.println("% ");
+    dataFile.print("Pressure: ");
+    dataFile.print(pressure);
+    dataFile.print(" hPa, Altitude: ");
+    dataFile.print(altitude);
+    dataFile.print(" m, Accel X: ");
+    dataFile.print(xAccel);
+    dataFile.print(" m/s^2, Y: ");
+    dataFile.print(yAccel);
+    dataFile.print(" m/s^2, Z: ");
+    dataFile.print(zAccel);
+    dataFile.print(" m/s^2, Gyro X: ");
+    dataFile.print(xGyro);
+    dataFile.print(" rad/s, Y: ");
+    dataFile.print(yAccel);
+    dataFile.print(" rad/s, Z: ");
+    dataFile.print(zAccel);
+    dataFile.print(" rad/s, Mag X: ");
+    dataFile.print(xMag);
+    dataFile.print(" uT, Y: ");
+    dataFile.print(yMag);
+    dataFile.print(" uT, Z: ");
+    dataFile.print(zMag);
+    dataFile.print(" uT");
+    dataFile.close();
+    Serial.println("Data logged to SD card.");
+    digitalWrite(2, HIGH);
+  } else {
+    Serial.println("Error opening file for writing.");
+  }
 }
 
 void loop() {
@@ -76,6 +152,22 @@ void loop() {
   Serial.print(F("Y: ")); Serial.print(mag.magnetic.y); Serial.print(F(" uT "));
   Serial.print(F("Z: ")); Serial.print(mag.magnetic.z); Serial.println(F(" uT"));
 
+  Serial.println();
+
+  Serial.println("HTS221");
+
+  sensors_event_t humidityEvent, tempEvent;
+  hts.getEvent(&humidityEvent, &tempEvent);
+
+  Serial.print(F("Temp: ")); Serial.print(tempEvent.temperature); Serial.println(F(" C"));
+  Serial.print(F("Humidity: ")); Serial.print(humidityEvent.relative_humidity); Serial.println(F("%"));  
+
   Serial.println(F("-------------------"));
-  delay(2000);
+
+  logDataToSD(bmp.readTemperature(), humidityEvent.relative_humidity, bmp.readPressure()/100, bmp.readAltitude(1019.66), 
+              accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
+              gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
+              mag.magnetic.x, mag.magnetic.y, mag.magnetic.z);
+  delay(5000);
+  digitalWrite(2, LOW);
 }
