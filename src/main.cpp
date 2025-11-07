@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Adafruit_Sensor.h>
+#include <LittleFS.h>
 
 #define LSM9DS1_XGCS 0x6A 
 #define LSM9DS1_MCS 0x1C
@@ -78,6 +79,31 @@ void initSDCard() {
   }
 }
 
+void initFS()
+{
+  // Mount the LittleFS filesystem
+  if (!LittleFS.begin(/*formatOnFail=*/true, "/littlefs", 10, "spiffs")) {
+    Serial.println("LittleFS mount failed!");
+    while(1);
+  }
+  Serial.println("LittleFS mounted successfully.");
+
+  const char* filename = "/sensor_data.txt";
+
+  // ---- Read existing file content ----
+  if (LittleFS.exists(filename)) {
+    Serial.println("Existing file found. Contents:");
+    File file = LittleFS.open(filename, FILE_READ);
+    while (file.available()) {
+      Serial.write(file.read());
+    }
+    file.close();
+    Serial.println("\n--- End of file ---\n");
+  } else {
+    Serial.println("No existing file found. Creating a new one...");
+  }
+}
+
 void setup() {
   Serial.begin(9600);
   
@@ -113,6 +139,7 @@ void setup() {
   Serial.println(F("HTS221 sensor found!"));
  
   initSDCard();
+  initFS();
 }
 
 void logDataToSD(float temperature, float humidity, float pressure, float altitude, 
@@ -141,21 +168,65 @@ void logDataToSD(float temperature, float humidity, float pressure, float altitu
     dataFile.print(" m/s^2, Gyro X: ");
     dataFile.print(xGyro);
     dataFile.print(" rad/s, Y: ");
-    dataFile.print(yAccel);
+    dataFile.print(yGyro);
     dataFile.print(" rad/s, Z: ");
-    dataFile.print(zAccel);
+    dataFile.print(zGyro);
     dataFile.print(" rad/s, Mag X: ");
     dataFile.print(xMag);
     dataFile.print(" uT, Y: ");
     dataFile.print(yMag);
     dataFile.print(" uT, Z: ");
     dataFile.print(zMag);
-    dataFile.print(" uT");
+    dataFile.print(" uT\n");
     dataFile.close();
     Serial.println("Data logged to SD card.");
     digitalWrite(2, HIGH);
   } else {
-    Serial.println("Error opening file for writing.");
+    Serial.println("Error opening SD file for writing.");
+  }
+}
+
+void logDataToFS(float temperature, float humidity, float pressure, float altitude, 
+                 float xAccel, float yAccel, float zAccel, 
+                 float xGyro, float yGyro, float zGyro, 
+                 float xMag, float yMag, float zMag) {
+
+  File dataFile = LittleFS.open("/sensor_data.txt", FILE_APPEND);
+ 
+  if (dataFile) {
+    dataFile.print("Temp: ");
+    dataFile.print(temperature);
+    dataFile.print(" C, Humidity: ");
+    dataFile.print(humidity);
+    dataFile.println("% ");
+    dataFile.print("Pressure: ");
+    dataFile.print(pressure);
+    dataFile.print(" hPa, Altitude: ");
+    dataFile.print(altitude);
+    dataFile.print(" m, Accel X: ");
+    dataFile.print(xAccel);
+    dataFile.print(" m/s^2, Y: ");
+    dataFile.print(yAccel);
+    dataFile.print(" m/s^2, Z: ");
+    dataFile.print(zAccel);
+    dataFile.print(" m/s^2, Gyro X: ");
+    dataFile.print(xGyro);
+    dataFile.print(" rad/s, Y: ");
+    dataFile.print(yGyro);
+    dataFile.print(" rad/s, Z: ");
+    dataFile.print(zGyro);
+    dataFile.print(" rad/s, Mag X: ");
+    dataFile.print(xMag);
+    dataFile.print(" uT, Y: ");
+    dataFile.print(yMag);
+    dataFile.print(" uT, Z: ");
+    dataFile.print(zMag);
+    dataFile.print(" uT\n");
+    dataFile.close();
+    Serial.println("Data logged to LittleFS storage.");
+    digitalWrite(2, HIGH);
+  } else {
+    Serial.println("Error opening LittleFS file for writing.");
   }
 }
 
@@ -213,6 +284,16 @@ void loop() {
               accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
               gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
               mag.magnetic.x, mag.magnetic.y, mag.magnetic.z);
-  delay(5000);
+
+  static unsigned long lastFSWrite = 0;
+  if (millis() - lastFSWrite > 60000)
+  {
+    lastFSWrite = millis();
+    logDataToFS(bmp.readTemperature(), humidityEvent.relative_humidity, bmp.readPressure()/100, bmp.readAltitude(1019.66), 
+              accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
+              gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
+              mag.magnetic.x, mag.magnetic.y, mag.magnetic.z);
+  }
+  delay(500);
   digitalWrite(2, LOW);
 }
