@@ -82,7 +82,7 @@ void initSDCard() {
 void initFS()
 {
   // Mount the LittleFS filesystem
-  if (!LittleFS.begin(/*formatOnFail=*/true, "/littlefs", 10, "spiffs")) {
+  if (!LittleFS.begin(/*formatOnFail=*/false, "/littlefs", 10, "spiffs")) {
     Serial.println("LittleFS mount failed!");
     while(1);
   }
